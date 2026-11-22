@@ -1,0 +1,4 @@
+shorts/
+__pycache__/
+*.egg-info/
+test-output/

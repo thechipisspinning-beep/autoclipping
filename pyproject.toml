@@ -1,0 +1,19 @@
+[project]
+name = "autoclip"
+version = "0.1.0"
+description = "Trasforma video YouTube lunghi in shorts verticali con sottotitoli, scegliendo i momenti migliori con Claude."
+requires-python = ">=3.10"
+dependencies = ["yt-dlp", "anthropic>=2.12"]
+
+[project.optional-dependencies]
+whisper = ["faster-whisper"]
+
+[project.scripts]
+autoclip = "autoclip.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["autoclip"]
