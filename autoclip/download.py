@@ -20,7 +20,20 @@ def is_url(s: str) -> bool:
     return s.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be"))
 
 
-def download(url: str, workdir: Path, lang: str = "it", max_height: int = 1080) -> Source:
+def parse_time(t: str | None) -> float | None:
+    """'1:23:45', '83:10', '4990' -> secondi."""
+    if not t:
+        return None
+    secs = 0.0
+    for part in str(t).split(":"):
+        secs = secs * 60 + float(part)
+    return secs
+
+
+def download(url: str, workdir: Path, lang: str = "it", max_height: int = 1080,
+             start: float | None = None, end: float | None = None) -> Source:
+    """YouTube, Twitch (VOD e clip), Kick e gli altri siti supportati da yt-dlp.
+    Con start/end scarica solo quel tratto: utile per live di molte ore."""
     import yt_dlp  # import lazy: non serve per i file locali
 
     workdir.mkdir(parents=True, exist_ok=True)
@@ -33,6 +46,8 @@ def download(url: str, workdir: Path, lang: str = "it", max_height: int = 1080) 
         "subtitleslangs": [lang, f"{lang}-orig", "en"],
         "subtitlesformat": "json3",
         "noplaylist": True,
+        **({"download_ranges": yt_dlp.utils.download_range_func(None, [(start or 0, end or float("inf"))]),
+            "force_keyframes_at_cuts": True} if (start or end) else {}),
         "quiet": True,
         "no_warnings": True,
     }

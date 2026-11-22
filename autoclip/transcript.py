@@ -117,3 +117,14 @@ def _merge_into_sentences(segs: list[Segment], max_len: float = 12.0) -> list[Se
 
 def to_prompt_text(segs: list[Segment]) -> str:
     return "\n".join(f"[{s.start:.1f}-{s.end:.1f}] {s.text}" for s in segs)
+
+
+def shift(segs: list[Segment], offset: float, start: float | None = None, end: float | None = None) -> list[Segment]:
+    """Sposta i tempi (es. quando si è scaricato solo un tratto del video) e tiene solo le frasi nell'intervallo."""
+    out = []
+    for s in segs:
+        if (start is not None and s.end <= start) or (end is not None and s.start >= end):
+            continue
+        out.append(Segment(s.start + offset, s.end + offset, s.text,
+                           [Word(w.text, w.start + offset, w.end + offset) for w in s.words]))
+    return out

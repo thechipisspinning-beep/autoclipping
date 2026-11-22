@@ -4,6 +4,8 @@ import json
 import re
 
 from .models import Clip, Segment
+from .peaks import Peak
+from .peaks import to_prompt_text as peaks_text
 from .transcript import to_prompt_text
 
 MODEL = "claude-opus-5-5"
@@ -14,7 +16,9 @@ Ricevi il transcript di un video lungo con i tempi in secondi. Scegli i momenti 
 - un gancio forte nei primi 3 secondi: la prima frase deve incuriosire;
 - inizio e fine esattamente sui confini delle righe del transcript, mai a metà frase;
 - nessuna sovrapposizione tra clip.
-Il titolo è breve (max 60 caratteri), nella lingua del video, senza clickbait ingannevole."""
+Il titolo è breve (max 60 caratteri), nella lingua del video, senza clickbait ingannevole.
+Se ricevi anche i picchi audio (urla, risate, esplosioni: tipici di live e gameplay), sono candidati forti:
+una buona clip gaming parte qualche secondo prima del picco, così si capisce cosa succede, e finisce poco dopo la reazione."""
 
 SCHEMA = {
     "type": "object",
@@ -41,13 +45,16 @@ SCHEMA = {
 }
 
 
-def select_with_claude(segs: list[Segment], n: int, min_s: float, max_s: float, title: str = "", client=None) -> list[Clip]:
+def select_with_claude(segs: list[Segment], n: int, min_s: float, max_s: float, title: str = "", client=None,
+                       peaks: list[Peak] | None = None) -> list[Clip]:
     import anthropic
 
     client = client or anthropic.Anthropic()
     user = (f"Titolo del video: {title}\n" if title else "") + (
         f"Proponi fino a {n} clip, ciascuna lunga tra {min_s:.0f} e {max_s:.0f} secondi, ordinate dalla migliore.\n\n"
         f"Transcript:\n{to_prompt_text(segs)}")
+    if peaks:
+        user += f"\n\nPicchi audio (secondi, intensità sopra la media):\n{peaks_text(peaks)}"
     with client.beta.messages.stream(
         model=MODEL,
         max_tokens=16000,
@@ -84,6 +91,27 @@ def select_heuristic(segs: list[Segment], n: int, min_s: float, max_s: float) ->
             j += 1
     cands.sort(key=lambda c: -c.score)
     return finalize(cands, segs, n, min_s, max_s)
+
+
+def select_from_peaks(peaks: list[Peak], n: int, min_s: float, max_s: float, total: float,
+                      segs: list[Segment] | None = None, pre: float = 0.55) -> list[Clip]:
+    """Clip costruite attorno ai picchi audio: parte del tempo prima (la costruzione), il resto dopo (la reazione)."""
+    target = max(min_s, min(max_s, (min_s + max_s) / 2))
+    clips = []
+    for p in peaks:
+        start = max(0.0, p.time - target * pre)
+        end = min(total, start + target)
+        start = max(0.0, end - target)
+        clips.append(Clip(start, end, "", "", f"picco audio a {int(p.time // 60)}:{int(p.time % 60):02d}", p.strength))
+    if segs:
+        return finalize(clips, segs, n, min_s, max_s)
+    out: list[Clip] = []
+    for c in clips:
+        if not any(c.start < o.end and o.start < c.end for o in out):
+            out.append(c)
+        if len(out) >= n:
+            break
+    return out
 
 
 def _snap(t: float, points: list[float]) -> float:
